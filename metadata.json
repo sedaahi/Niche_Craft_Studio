@@ -1,0 +1,8 @@
+{
+  "name": "Niche Craft Studio",
+  "description": "Ankara Tunalı'da seramik, resim, takı ve el sanatları atölyeleri için tek seferlik seans biletleme platformu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

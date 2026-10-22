@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Courses: Public can read workshop catalogue
+    match /courses/{courseId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(courseId);
+    }
+
+    // Sessions: Public can read schedule & remaining seats
+    match /sessions/{sessionId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(sessionId);
+    }
+
+    // Users: Profiles and user records
+    match /users/{userId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(userId);
+      allow delete: if false;
+    }
+
+    // Orders & Tickets: Workshop bookings
+    match /orders/{orderId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(orderId);
+      allow delete: if false;
+    }
+
+    // Email Logs: Dispatched email notifications
+    match /email_logs/{logId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(logId);
+      allow delete: if false;
+    }
+  }
+}

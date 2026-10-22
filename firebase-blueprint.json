@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered workshop user profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "username": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "password": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "role": { "type": "string", "enum": ["customer", "admin"] },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "name", "email", "role", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Hobby craft workshop course details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 50 },
+        "categoryLabel": { "type": "string", "maxLength": 50 },
+        "shortDescription": { "type": "string", "maxLength": 500 },
+        "fullDescription": { "type": "string", "maxLength": 3000 },
+        "price": { "type": "number" },
+        "duration": { "type": "string", "maxLength": 50 },
+        "level": { "type": "string", "maxLength": 50 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "featured": { "type": "boolean" }
+      },
+      "required": ["id", "title", "category", "price", "duration", "level", "imageUrl"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "Workshop scheduled time slot and capacity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "courseId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 50 },
+        "startTime": { "type": "string", "maxLength": 20 },
+        "endTime": { "type": "string", "maxLength": 20 },
+        "capacity": { "type": "number" },
+        "bookedCount": { "type": "number" },
+        "price": { "type": "number" }
+      },
+      "required": ["id", "courseId", "date", "startTime", "endTime", "capacity", "bookedCount", "price"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Workshop ticket order and attendee records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderNumber": { "type": "string", "maxLength": 64 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "customerName": { "type": "string", "maxLength": 100 },
+        "customerEmail": { "type": "string", "maxLength": 150 },
+        "customerPhone": { "type": "string", "maxLength": 30 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "courseId": { "type": "string", "maxLength": 128 },
+        "quantity": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 10 },
+        "status": { "type": "string", "enum": ["paid", "pending", "refunded", "cancelled"] },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "paymentMethod": { "type": "string", "maxLength": 100 },
+        "paymentId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "orderNumber", "customerName", "customerEmail", "sessionId", "courseId", "quantity", "totalAmount", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and customer accounts"
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Workshop course listings"
+    },
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Workshop session time slots and seating limits"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Ticket purchases, customer information, and tickets"
+    }
+  }
+}

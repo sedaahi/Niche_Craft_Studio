@@ -154,24 +154,30 @@ function generatePdf() {
     { height: 28 }
   );
 
-  // Yayın adresi & Test hesabı (uydurma)
+  // Yayın adresi & Test hesabı (uydurma) & Admin giriş bilgileri
   doc.setFillColor(250, 247, 242);
   doc.setDrawColor(231, 221, 206);
-  doc.roundedRect(14, y, 182, 21, 2, 2, 'FD');
+  doc.roundedRect(14, y, 182, 26, 2, 2, 'FD');
 
   doc.setFont('LiberationSans', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(74, 63, 58);
-  doc.text('Yayın adresi:', 18, y + 7);
+  doc.text('Yayın adresi:', 18, y + 6.5);
   doc.setTextColor(200, 125, 85);
-  doc.text('https://nichecraftstudio.netlify.app', 42, y + 7);
+  doc.text('https://nichecraftstudio.netlify.app', 42, y + 6.5);
 
   doc.setTextColor(74, 63, 58);
-  doc.text('Test hesabı (uydurma):', 18, y + 14.5);
+  doc.text('Test hesabı (uydurma):', 18, y + 13.5);
   doc.setFont('LiberationSans', 'normal');
-  doc.text('E-posta: demo@nichecraft.studio   |   Şifre: Test1234!   (Veya Google ile Hızlı Giriş)', 55, y + 14.5);
+  doc.text('E-posta: demo@nichecraft.studio   |   Şifre: Test1234!   (Veya Google ile Hızlı Giriş)', 56, y + 13.5);
 
-  y += 26;
+  doc.setFont('LiberationSans', 'bold');
+  doc.setTextColor(74, 63, 58);
+  doc.text('Admin giriş bilgileri:', 18, y + 20.5);
+  doc.setFont('LiberationSans', 'normal');
+  doc.text('E-posta: admin@nichecraft.studio   |   Şifre: admin123   (Yönetici / Kurucu Masası Girişi)', 56, y + 20.5);
+
+  y += 31;
 
   // ------------------------------------------
   // BÖLÜM B: SON KONTROL LİSTESİ (3 KUTU)

@@ -3,6 +3,17 @@ import { db } from '../firebase';
 import { collection, doc, setDoc } from 'firebase/firestore';
 
 const STORAGE_KEY_EMAIL_LOGS = 'ncs_email_logs_v1';
+const PRODUCTION_SITE_URL = 'https://nichecraftstudio.netlify.app';
+
+function getSiteBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = window.location.origin;
+    if (!origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+      return origin;
+    }
+  }
+  return PRODUCTION_SITE_URL;
+}
 
 // Helper to save email log locally and to Firestore
 export const logEmailNotification = async (log: EmailNotificationLog) => {
@@ -33,6 +44,7 @@ export const getEmailLogs = (): EmailNotificationLog[] => {
  * Builds responsive, warm HTML for Welcome Email
  */
 export const buildWelcomeEmailHtml = (name: string, email: string): string => {
+  const siteUrl = getSiteBaseUrl();
   return `
 <!DOCTYPE html>
 <html lang="tr">
@@ -78,7 +90,7 @@ export const buildWelcomeEmailHtml = (name: string, email: string): string => {
       </p>
 
       <div style="text-align: center; margin: 24px 0;">
-        <a href="https://nichecraftstudio.com" class="btn">Atölye Seanslarını Keşfet →</a>
+        <a href="${siteUrl}" class="btn" style="display: inline-block; background-color: #F4B59A; color: #4A3F3A; font-weight: 600; font-size: 14px; text-decoration: none; padding: 12px 24px; border-radius: 12px;">Atölye Seanslarını Keşfet →</a>
       </div>
     </div>
     <div class="footer">
@@ -105,6 +117,7 @@ export const buildTicketConfirmationEmailHtml = ({
   course: Course;
   session: Session;
 }): string => {
+  const siteUrl = getSiteBaseUrl();
   const formattedDate = new Date(session.date).toLocaleDateString('tr-TR', {
     weekday: 'long',
     day: 'numeric',
@@ -195,6 +208,10 @@ export const buildTicketConfirmationEmailHtml = ({
 
       <div style="background: #F8F4EE; border-radius: 10px; padding: 12px 14px; font-size: 11px; color: #7E7067; line-height: 1.5;">
         ℹ️ <strong>İptal & İade:</strong> Seanstan 48 saat öncesine kadar stüdyo web sayfanızdan veya profilinizden kesintisiz iade talebinde bulunabilirsiniz. Tüm malzemeler stüdyomuz tarafından sağlanır.
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 8px 0;">
+        <a href="${siteUrl}" style="display: inline-block; background-color: #F4B59A; color: #4A3F3A; font-weight: 600; font-size: 14px; text-decoration: none; padding: 12px 24px; border-radius: 12px;">Biletlerimi & Seansları Görüntüle →</a>
       </div>
     </div>
 

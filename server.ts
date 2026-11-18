@@ -132,9 +132,34 @@ async function startServer() {
     return res.status(404).json({ error: 'Ödev 4 Proje Kartı PDF bulunamadı' });
   });
 
+  // In-memory rate limit store for AI endpoint (10 requests per 10 minutes per IP)
+  const aiRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const AI_MAX_REQUESTS = 10;
+  const AI_WINDOW_MS = 10 * 60 * 1000;
+
   // AI Workshop Matcher & Craft Inspiration Endpoint (Ödev 4 / Bitirme Projesi - Gemini 3.8 Flash)
   app.post('/api/ai-recommend', async (req, res) => {
     try {
+      const clientIp =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket.remoteAddress ||
+        'anonymous';
+
+      const now = Date.now();
+      const record = aiRateLimitMap.get(clientIp);
+      if (!record || now > record.resetAt) {
+        aiRateLimitMap.set(clientIp, { count: 1, resetAt: now + AI_WINDOW_MS });
+      } else if (record.count >= AI_MAX_REQUESTS) {
+        return res.status(429).json({
+          success: false,
+          rateLimited: true,
+          error: 'Kısa süre içinde çok fazla öneri talebi gönderdiniz. Lütfen birkaç dakika bekleyiniz.',
+          disclaimer: '✨ Yapay zekâ önerisidir, kontrol ediniz.',
+        });
+      } else {
+        record.count += 1;
+      }
+
       const { mood, experienceLevel, timeBudget, userDesire } = req.body || {};
 
       const catalogSummary = `

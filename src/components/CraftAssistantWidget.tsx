@@ -46,6 +46,34 @@ const EXPERIENCES = [
   'Fark etmez, öğrenmeye açığım',
 ];
 
+const USAGE_STORAGE_KEY = 'ncs_ai_usage_v1';
+const MAX_HOURLY_SUGGESTIONS = 5;
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+function getRecentUsageTimestamps(): number[] {
+  try {
+    const raw = localStorage.getItem(USAGE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const cutoff = Date.now() - ONE_HOUR_MS;
+    return parsed.filter((ts) => typeof ts === 'number' && ts > cutoff);
+  } catch {
+    return [];
+  }
+}
+
+function recordUsageTimestamp(): number {
+  const recent = getRecentUsageTimestamps();
+  const updated = [...recent, Date.now()];
+  try {
+    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore storage errors in private browsing
+  }
+  return Math.max(0, MAX_HOURLY_SUGGESTIONS - updated.length);
+}
+
 export const CraftAssistantWidget: React.FC = () => {
   const { courses, setCurrentView } = useStore();
   const [isOpen, setIsOpen] = useState(false);
@@ -55,6 +83,9 @@ export const CraftAssistantWidget: React.FC = () => {
   const [selectedExp, setSelectedExp] = useState<string>('');
   const [userNote, setUserNote] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [remainingQuota, setRemainingQuota] = useState<number>(() =>
+    Math.max(0, MAX_HOURLY_SUGGESTIONS - getRecentUsageTimestamps().length)
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -142,6 +173,22 @@ export const CraftAssistantWidget: React.FC = () => {
       ]);
     }
 
+    const activeTimestamps = getRecentUsageTimestamps();
+    if (activeTimestamps.length >= MAX_HOURLY_SUGGESTIONS) {
+      setRemainingQuota(0);
+      setCurrentStep('done');
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'ast-limit-' + Date.now(),
+          sender: 'assistant',
+          text: `Saatlik ${MAX_HOURLY_SUGGESTIONS} kişisel atölye önerisi hakkına ulaştın. Adil kullanım ve kesintisiz hizmet için kısa bir süre sonra yeniden öneri alabilir, bu sırada tüm atölye seanslarımızı özgürce keşfedebilirsin. 🌿`,
+        },
+      ]);
+      setUserNote('');
+      return;
+    }
+
     setCurrentStep('done');
     setIsLoading(true);
 
@@ -156,7 +203,22 @@ export const CraftAssistantWidget: React.FC = () => {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 429 || data?.rateLimited) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'ast-rate-' + Date.now(),
+            sender: 'assistant',
+            text: 'Kısa sürede çok sayıda öneri oluşturduk. Biraz soluklanıp birkaç dakika sonra tekrar deneyebilirsin. Bu arada Atölyeler & Seanslar sayfasından tüm takvimimize göz atabilirsin! 🎨',
+          },
+        ]);
+        return;
+      }
+
+      const nextRemaining = recordUsageTimestamp();
+      setRemainingQuota(nextRemaining);
 
       if (data && data.recommendation) {
         setMessages((prev) => [
@@ -219,8 +281,8 @@ export const CraftAssistantWidget: React.FC = () => {
 
   return (
     <>
-      {/* Floating Bottom-Right Trigger Button */}
-      <div className="fixed bottom-6 right-6 z-40">
+      {/* Floating Bottom-Right Trigger Button (positioned above hosting badges) */}
+      <div className="fixed bottom-16 right-4 sm:right-6 z-40">
         {!isOpen && (
           <button
             onClick={() => setIsOpen(true)}
@@ -240,7 +302,7 @@ export const CraftAssistantWidget: React.FC = () => {
 
       {/* Floating Chat Modal */}
       {isOpen && (
-        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[400px] h-[560px] max-h-[85vh] bg-[#FAF7F2] rounded-3xl shadow-[0_16px_50px_rgba(74,63,58,0.22)] border border-[#E7DDCE] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed bottom-14 right-4 sm:bottom-16 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[400px] h-[540px] max-h-[80vh] bg-[#FAF7F2] rounded-3xl shadow-[0_16px_50px_rgba(74,63,58,0.22)] border border-[#E7DDCE] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
           {/* Header */}
           <div className="px-5 py-3.5 bg-[#4A3F3A] text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
@@ -468,16 +530,29 @@ export const CraftAssistantWidget: React.FC = () => {
                 </div>
               </div>
             ) : currentStep === 'done' ? (
-              <button
-                onClick={handleReset}
-                className="w-full py-2 bg-[#FAF7F2] hover:bg-[#F3EADF] text-[#4A3F3A] text-xs font-medium rounded-xl border border-[#E7DDCE] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Farklı Bir Ruh Hali İçin Yeniden Başlat</span>
-              </button>
+              <div className="space-y-1.5">
+                <button
+                  onClick={handleReset}
+                  disabled={remainingQuota <= 0}
+                  className="w-full py-2 bg-[#FAF7F2] hover:bg-[#F3EADF] disabled:opacity-50 text-[#4A3F3A] text-xs font-medium rounded-xl border border-[#E7DDCE] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>
+                    {remainingQuota > 0
+                      ? 'Farklı Bir Ruh Hali İçin Yeniden Başlat'
+                      : 'Saatlik Öneri Limitine Ulaşıldı'}
+                  </span>
+                </button>
+                <div className="text-center text-[10px] text-[#7E7067]">
+                  Saatlik danışman kullanım hakkı: {remainingQuota}/{MAX_HOURLY_SUGGESTIONS}
+                </div>
+              </div>
             ) : (
-              <div className="text-center text-[10px] text-[#7E7067] py-1">
-                Yukarıdaki seçeneklerden birini işaretleyerek devam edebilirsin.
+              <div className="flex items-center justify-between text-[10px] text-[#7E7067] py-1 px-1">
+                <span>Seçeneklerden birini işaretleyerek devam et.</span>
+                <span className="font-medium text-[#C87D55]">
+                  Hak: {remainingQuota}/{MAX_HOURLY_SUGGESTIONS}
+                </span>
               </div>
             )}
           </div>

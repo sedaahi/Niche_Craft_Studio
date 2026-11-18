@@ -1,0 +1,24 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Route /api/* calls to Netlify Serverless Functions
+[[redirects]]
+  from = "/api/ai-recommend"
+  to = "/.netlify/functions/ai-recommend"
+  status = 200
+
+[[redirects]]
+  from = "/api/send-email"
+  to = "/.netlify/functions/send-email"
+  status = 200
+
+# SPA fallback for client-side routing (Netlify serves existing static files like .pdf before applying this)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

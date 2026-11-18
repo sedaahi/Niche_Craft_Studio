@@ -110,6 +110,40 @@ export interface Order {
   paymentId: string;
 }
 
+export type PostStatus = 'draft' | 'pending' | 'published' | 'rejected';
+
+export interface CraftPost {
+  id: string;
+  title: string;
+  category: CourseCategory;
+  categoryLabel: string;
+  workshopId: string;
+  workshopTitle: string;
+  imageUrl?: string;
+  rating?: number; // 1-5 stars
+  durationMinutes?: number;
+  materials?: string[];
+  steps?: string[];
+  description: string; // Katılımcı yorumu ve atölye deneyimi
+  authorId: string;
+  authorName: string;
+  status: PostStatus;
+  rejectionReason?: string;
+  likesCount: number;
+  showOnHome?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+export interface CraftLike {
+  id: string; // `${postId}_${userId}`
+  postId: string;
+  userId: string;
+  createdAt: string;
+}
+
 export type ViewState = 
   | { view: 'home' }
   | { view: 'courses'; category?: CourseCategory }
@@ -119,4 +153,6 @@ export type ViewState =
   | { view: 'account' }
   | { view: 'about' }
   | { view: 'admin' }
-  | { view: 'auth'; initialTab?: 'login' | 'register'; returnTo?: ViewState };
+  | { view: 'auth'; initialTab?: 'login' | 'register'; returnTo?: ViewState }
+  | { view: 'community' } // Keşfet & Katılımcı Eserleri Vitrini
+  | { view: 'my-crafts' }; // Atölye Paylaşımlarım & Eserlerim (Kullanıcının alanı)

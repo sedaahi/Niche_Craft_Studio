@@ -82,12 +82,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
     if (res.success) {
       setFeedback({ type: 'success', message: res.message });
       setTimeout(() => {
-        if (returnTo) {
+        if (res.user?.role === 'admin') {
+          setCurrentView({ view: 'admin' });
+        } else if (returnTo) {
           setCurrentView(returnTo);
         } else {
           setCurrentView({ view: 'account' });
         }
-      }, 700);
+      }, 600);
     } else {
       setFeedback({ type: 'error', message: res.message });
     }
@@ -122,12 +124,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
     } else {
       setFeedback({ type: 'error', message: res.message });
     }
-  };
-
-  const fillDemoAccount = () => {
-    setLoginIdentifier('ahiseda@gmail.com');
-    setLoginPassword('password123');
-    setFeedback(null);
   };
 
   const handleForgotPasswordSubmit = (e: React.FormEvent) => {
@@ -281,7 +277,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     required
                     value={loginIdentifier}
                     onChange={(e) => setLoginIdentifier(e.target.value)}
-                    placeholder="ornek@email.com veya sedahi"
+                    placeholder="ornek@email.com veya kullaniciadi"
                     className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl bg-[#FAF7F2] border border-[#E7DDCE] text-[#4A3F3A] placeholder-[#7E7067]/60 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#F4B59A]"
                   />
                   <Mail className="w-4 h-4 text-[#7E7067] absolute left-3.5 top-3" />
@@ -341,19 +337,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </button>
               </div>
 
-              {/* Fast Test / Demo Credentials button */}
-              <div className="pt-3 border-t border-[#E7DDCE]/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#7E7067]">
-                <span>Hızlı deneme için:</span>
-                <button
-                  type="button"
-                  onClick={fillDemoAccount}
-                  className="px-3 py-1.5 bg-[#FAF7F2] hover:bg-[#F3EADF] text-[#4A3F3A] font-medium rounded-lg border border-[#E7DDCE] transition-colors cursor-pointer"
-                >
-                  Örnek Hesapla Doldur (Seda Ahi)
-                </button>
-              </div>
-
-              <div className="text-center pt-2 text-xs text-[#7E7067]">
+              <div className="text-center pt-3 text-xs text-[#7E7067]">
                 Henüz hesabınız yok mu?{' '}
                 <button
                   type="button"

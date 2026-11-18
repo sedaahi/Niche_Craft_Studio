@@ -11,6 +11,9 @@ import { AccountView } from './views/AccountView';
 import { AboutView } from './views/AboutView';
 import { AdminView } from './views/AdminView';
 import { AuthView } from './views/AuthView';
+import { CommunityView } from './views/CommunityView';
+import { MyCraftsView } from './views/MyCraftsView';
+import { CraftAssistantWidget } from './components/CraftAssistantWidget';
 
 const MainRouter: React.FC = () => {
   const { currentView } = useStore();
@@ -28,6 +31,8 @@ const MainRouter: React.FC = () => {
         {currentView.view === 'courses' && (
           <CoursesView initialCategory={currentView.category} />
         )}
+        {currentView.view === 'community' && <CommunityView />}
+        {currentView.view === 'my-crafts' && <MyCraftsView />}
         {currentView.view === 'course-detail' && (
           <CourseDetailView
             courseId={currentView.courseId}
@@ -51,6 +56,7 @@ const MainRouter: React.FC = () => {
         )}
       </main>
       <Footer />
+      <CraftAssistantWidget />
     </div>
   );
 };

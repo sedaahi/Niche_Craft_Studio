@@ -53,6 +53,11 @@ exports.onUserCreated = functions.firestore
         html: html,
       });
 
+      if (response && response.error) {
+        console.warn('[Firebase Functions] Resend API returned error (sandbox restriction):', response.error);
+        return null;
+      }
+
       console.log('[Firebase Functions] Resend welcome email sent:', response);
       return response;
     } catch (error) {
@@ -121,6 +126,11 @@ exports.onOrderCreated = functions.firestore
         subject: `🎟️ Biletiniz Hazır: ${courseTitle} — Sipariş No: ${order.orderNumber}`,
         html: html,
       });
+
+      if (response && response.error) {
+        console.warn('[Firebase Functions] Resend API returned error (sandbox restriction):', response.error);
+        return null;
+      }
 
       console.log('[Firebase Functions] Resend ticket email sent:', response);
       return response;

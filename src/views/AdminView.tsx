@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
 import { workshopCeramicImg } from '../data/initialData';
-import { Course, Session, CourseCategory } from '../types';
+import { Course, Session, CourseCategory, CraftPost } from '../types';
 import { QrCodeSvg } from '../components/QrCodeSvg';
 import {
   Shield,
@@ -32,6 +32,7 @@ import {
   Sparkles,
   Inbox,
   AtSign,
+  Star,
 } from 'lucide-react';
 import { sendWelcomeEmail, sendTicketConfirmationEmail } from '../services/emailService';
 
@@ -42,9 +43,16 @@ export const AdminView: React.FC = () => {
     orders,
     users,
     emailLogs,
+    posts,
+    reviewPost,
+    togglePostShowOnHome,
     syncUsersToCloud,
     syncCoursesToCloud,
     isAdminLoggedIn,
+    currentUser,
+    setCurrentView,
+    logoutUser,
+    loginUser,
     loginAsAdmin,
     logoutAdmin,
     addCourse,
@@ -59,14 +67,19 @@ export const AdminView: React.FC = () => {
     resetToSampleData,
   } = useStore();
 
+  const [adminEmailInput, setAdminEmailInput] = useState('admin@nichecraft.studio');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'sessions' | 'courses' | 'orders' | 'checkin' | 'emails'>('dashboard');
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'sessions' | 'courses' | 'orders' | 'checkin' | 'emails' | 'approvals'>('dashboard');
   const [userSearch, setUserSearch] = useState('');
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [isSyncingCourses, setIsSyncingCourses] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('demo@nichecraft.studio');
   const [testEmailSending, setTestEmailSending] = useState(false);
+  const [rejectingPost, setRejectingPost] = useState<CraftPost | null>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
+  const [approvalStatusFilter, setApprovalStatusFilter] = useState<'all' | 'pending' | 'published' | 'rejected'>('pending');
 
   // Check-in state
   const [checkInCode, setCheckInCode] = useState('');
@@ -104,24 +117,70 @@ export const AdminView: React.FC = () => {
 
   // Selected session for attendee modal
   const [selectedSessionForAttendees, setSelectedSessionForAttendees] = useState<Session | null>(null);
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
   // Feedback toast for refunds/actions
   const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // If not logged in, show sleek login form
+  // Unified single-session authorization barrier
   if (!isAdminLoggedIn) {
-    const handleLogin = (e: React.FormEvent) => {
-      e.preventDefault();
-      const success = loginAsAdmin(passwordInput.trim());
-      if (!success) {
-        setLoginError('Hatalı şifre. (İpucu: admin123)');
-      } else {
-        setLoginError('');
-      }
-    };
+    if (currentUser) {
+      // Customer is currently logged in: prevent simultaneous conflicting logins
+      return (
+        <div className="max-w-md mx-auto py-16 px-4">
+          <div className="bg-[#FAF7F2] rounded-3xl p-8 border border-[#E7DDCE] shadow-sm space-y-6 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+              <Shield className="w-7 h-7" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#DE997C] block mb-1">
+                Erişim Kısıtlaması & Tek Oturum
+              </span>
+              <h1 className="font-display text-2xl font-semibold text-[#4A3F3A]">
+                Yönetici Yetkisi Gereklidir
+              </h1>
+            </div>
+            <p className="text-xs text-[#7E7067] leading-relaxed">
+              Şu anda katılımcı hesabınızdasınız (<strong>{currentUser.name}</strong> · {currentUser.email}). 
+              Sistemimizde tek oturum kuralı geçerlidir; müşteri oturumu açıkken aynı anda arka planda bağımsız bir yönetici oturumu çalışamaz.
+            </p>
+            <div className="p-3.5 bg-white rounded-2xl border border-[#E7DDCE] text-xs text-[#4A3F3A] text-left space-y-1.5">
+              <div className="font-semibold text-xs flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                Yönetim Paneline Geçiş:
+              </div>
+              <p className="text-[11px] text-[#7E7067] leading-relaxed">
+                Aşağıdaki butona tıkladığınızda mevcut katılımcı oturumu sonlandırılarak tek giriş kapısından yetkili yönetici hesabıyla (<strong>admin@nichecraft.studio</strong>) giriş yapılır.
+              </p>
+            </div>
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  logoutUser();
+                  setCurrentView({ view: 'auth', initialTab: 'login', returnTo: { view: 'admin' } });
+                }}
+                className="w-full py-3 bg-[#4A3F3A] hover:bg-[#382F2A] text-white font-semibold text-xs rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
+              >
+                <Shield className="w-4 h-4 text-[#DE997C]" />
+                <span>Oturumu Kapat ve Yönetici Girişine Git</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentView({ view: 'account' })}
+                className="w-full py-2.5 bg-white hover:bg-[#F3EADF] text-[#4A3F3A] font-medium text-xs rounded-xl border border-[#E7DDCE] transition-all cursor-pointer"
+              >
+                Katılımcı Biletlerime & Profilime Dön
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
+    // Guest state (not logged in)
     return (
-      <div className="max-w-md mx-auto py-20 px-4">
+      <div className="max-w-md mx-auto py-16 px-4">
         <div className="bg-[#FAF7F2] rounded-3xl p-8 border border-[#E7DDCE] shadow-sm space-y-6">
           <div className="text-center space-y-2">
             <div className="w-12 h-12 rounded-2xl bg-[#DE997C]/20 text-[#DE997C] flex items-center justify-center mx-auto">
@@ -130,52 +189,21 @@ export const AdminView: React.FC = () => {
             <h1 className="font-display text-2xl font-semibold text-[#4A3F3A]">
               Stüdyo Yönetim Girişi
             </h1>
-            <p className="text-xs text-[#7E7067]">
-              Atölye takvimi, kontenjanlar ve bilet doğrulaması için yetkili şifrenizi girin.
+            <p className="text-xs text-[#7E7067] leading-relaxed">
+              Atölye takvimi, kontenjanlar, kapı check-in ve katılımcı listeleri tek bir merkezi giriş üzerinden yönetilir.
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            {loginError && (
-              <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs border border-red-200">
-                {loginError}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-[#4A3F3A] mb-1.5">
-                Admin Şifresi
-              </label>
-              <input
-                type="password"
-                required
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Şifrenizi yazınız"
-                className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-white border border-[#E7DDCE] text-[#4A3F3A] focus:outline-hidden focus:ring-2 focus:ring-[#F4B59A]"
-              />
-            </div>
-
+          <div className="space-y-3">
             <button
-              type="submit"
-              className="w-full py-2.5 bg-[#4A3F3A] hover:bg-[#382F2A] text-white font-semibold text-xs rounded-xl transition-colors cursor-pointer"
+              type="button"
+              onClick={() => setCurrentView({ view: 'auth', initialTab: 'login', returnTo: { view: 'admin' } })}
+              className="w-full py-3 bg-[#4A3F3A] hover:bg-[#382F2A] text-white font-semibold text-xs rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
             >
-              Yönetici Paneline Gir
+              <Shield className="w-4 h-4 text-[#DE997C]" />
+              <span>Giriş Yaparak Devam Et</span>
             </button>
-
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setPasswordInput('admin123');
-                  loginAsAdmin('admin123');
-                }}
-                className="text-xs text-[#DE997C] hover:underline cursor-pointer"
-              >
-                Hızlı Test Girişi (admin123)
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
       </div>
     );
@@ -218,33 +246,94 @@ export const AdminView: React.FC = () => {
     setActionNotice({ type: 'success', message: 'Yeni seans başarıyla takvime eklendi.' });
   };
 
-  // Handle Course creation
-  const handleCreateCourse = (e: React.FormEvent) => {
-    e.preventDefault();
-    addCourse({
-      title: courseForm.title,
-      slug: courseForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-      category: courseForm.category,
-      categoryLabel: courseForm.categoryLabel,
-      description: courseForm.description,
-      longDescription: courseForm.longDescription || courseForm.description,
-      durationMinutes: Number(courseForm.durationMinutes),
-      level: courseForm.level,
-      includedItems: courseForm.includedItems.split(',').map((s) => s.trim()),
-      instructorId: 'inst-custom',
-      instructor: {
-        id: 'inst-custom',
-        name: courseForm.instructorName,
-        title: 'Atölye Eğitmeni',
-        bio: 'Niche Craft Studio bünyesinde atölyeler düzenliyor.',
-      },
-      imageUrl: courseForm.imageUrl,
-      basePrice: Number(courseForm.basePrice),
-      featured: false,
-      maxCapacityPerSession: 8,
+  const openNewCourseModal = () => {
+    setEditingCourse(null);
+    setCourseForm({
+      title: '',
+      category: 'ceramic',
+      categoryLabel: 'Seramik',
+      description: '',
+      longDescription: '',
+      durationMinutes: 120,
+      level: 'Başlangıç',
+      includedItems: '1 kg kil, Şekillendirme aletleri, 2 kez fırınlama, Kahve ikramı',
+      instructorName: 'Selin Arslan',
+      imageUrl: workshopCeramicImg,
+      basePrice: 1250,
     });
-    setIsCourseModalOpen(false);
-    setActionNotice({ type: 'success', message: 'Yeni atölye kursu sisteme kaydedildi.' });
+    setIsCourseModalOpen(true);
+  };
+
+  const openEditCourseModal = (course: Course) => {
+    setEditingCourse(course);
+    setCourseForm({
+      title: course.title,
+      category: course.category,
+      categoryLabel: course.categoryLabel,
+      description: course.description,
+      longDescription: course.longDescription || course.description,
+      durationMinutes: course.durationMinutes,
+      level: course.level,
+      includedItems: course.includedItems ? course.includedItems.join(', ') : '',
+      instructorName: course.instructor?.name || 'Selin Arslan',
+      imageUrl: course.imageUrl || workshopCeramicImg,
+      basePrice: course.basePrice,
+    });
+    setIsCourseModalOpen(true);
+  };
+
+  // Handle Course creation or update (Full CRUD)
+  const handleSaveCourse = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingCourse) {
+      updateCourse(editingCourse.id, {
+        title: courseForm.title,
+        slug: courseForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        category: courseForm.category,
+        categoryLabel: courseForm.categoryLabel,
+        description: courseForm.description,
+        longDescription: courseForm.longDescription || courseForm.description,
+        durationMinutes: Number(courseForm.durationMinutes),
+        level: courseForm.level,
+        includedItems: courseForm.includedItems.split(',').map((s) => s.trim()),
+        instructor: {
+          id: editingCourse.instructor?.id || 'inst-custom',
+          name: courseForm.instructorName,
+          title: editingCourse.instructor?.title || 'Atölye Eğitmeni',
+          bio: editingCourse.instructor?.bio || 'Niche Craft Studio bünyesinde atölyeler düzenliyor.',
+        },
+        imageUrl: courseForm.imageUrl,
+        basePrice: Number(courseForm.basePrice),
+      });
+      setIsCourseModalOpen(false);
+      setEditingCourse(null);
+      setActionNotice({ type: 'success', message: `"${courseForm.title}" atölyesi başarıyla güncellendi.` });
+    } else {
+      addCourse({
+        title: courseForm.title,
+        slug: courseForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        category: courseForm.category,
+        categoryLabel: courseForm.categoryLabel,
+        description: courseForm.description,
+        longDescription: courseForm.longDescription || courseForm.description,
+        durationMinutes: Number(courseForm.durationMinutes),
+        level: courseForm.level,
+        includedItems: courseForm.includedItems.split(',').map((s) => s.trim()),
+        instructorId: 'inst-custom',
+        instructor: {
+          id: 'inst-custom',
+          name: courseForm.instructorName,
+          title: 'Atölye Eğitmeni',
+          bio: 'Niche Craft Studio bünyesinde atölyeler düzenliyor.',
+        },
+        imageUrl: courseForm.imageUrl,
+        basePrice: Number(courseForm.basePrice),
+        featured: false,
+        maxCapacityPerSession: 8,
+      });
+      setIsCourseModalOpen(false);
+      setActionNotice({ type: 'success', message: 'Yeni atölye kursu başarıyla sisteme eklendi.' });
+    }
   };
 
   // Handle Refund
@@ -281,7 +370,7 @@ export const AdminView: React.FC = () => {
           </h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => {
               if (window.confirm('Örnek veriler sıfırlansın mı?')) {
@@ -338,6 +427,30 @@ export const AdminView: React.FC = () => {
         >
           <LayoutDashboard className="w-3.5 h-3.5" />
           <span>Genel Özet</span>
+        </button>
+
+        {/* 2. TAB: ESER & YORUM ONAY MASASI (Öncelikli Sıraya Alındı) */}
+        <button
+          onClick={() => setActiveTab('approvals')}
+          className={`px-4 py-2 text-xs font-semibold rounded-xl whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer relative ${
+            activeTab === 'approvals'
+              ? 'bg-[#4A3F3A] text-white shadow-xs'
+              : posts.filter((p) => p.status === 'pending').length > 0
+              ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+              : 'bg-[#F3EADF] text-[#7E7067] hover:text-[#4A3F3A]'
+          }`}
+        >
+          <Sparkles className={`w-3.5 h-3.5 ${posts.filter((p) => p.status === 'pending').length > 0 ? 'text-amber-600' : 'text-amber-500'}`} />
+          <span>Eser & Yorum Onay Masası</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+              posts.filter((p) => p.status === 'pending').length > 0
+                ? 'bg-amber-500 text-white animate-pulse'
+                : 'bg-stone-200 text-stone-700'
+            }`}
+          >
+            {posts.filter((p) => p.status === 'pending').length}
+          </span>
         </button>
 
         <button
@@ -416,6 +529,7 @@ export const AdminView: React.FC = () => {
       {/* TAB 1: DASHBOARD ÖZET */}
       {activeTab === 'dashboard' && (
         <div className="space-y-8">
+
           {/* KPI Strip */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-[#FAF7F2] p-5 rounded-2xl border border-[#E7DDCE] space-y-1">
@@ -460,21 +574,293 @@ export const AdminView: React.FC = () => {
               </span>
             </div>
 
-            <div className="bg-[#FAF7F2] p-5 rounded-2xl border border-[#E7DDCE] space-y-1">
-              <span className="text-[11px] font-semibold text-[#7E7067] uppercase">Aktif Seans</span>
+            <div
+              onClick={() => setActiveTab('approvals')}
+              className="bg-[#FAF7F2] p-5 rounded-2xl border border-[#E7DDCE] space-y-1 hover:border-amber-400 transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-[#7E7067] uppercase">Onay Kuyruğu</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 group-hover:scale-110 transition-transform" />
+              </div>
               <span className="font-display text-2xl font-bold text-[#4A3F3A] block">
-                {sessions.length} Seans
+                {posts.filter((p) => p.status === 'pending').length} Bekliyor
               </span>
-              <span className="text-[10px] text-[#DE997C] font-semibold">Tunalı Hilmi Stüdyosu</span>
+              <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
+                {posts.filter((p) => p.status === 'published').length} Yayında ↗
+              </span>
             </div>
+          </div>
+
+          {/* DİREKT DASHBOARD ÖNÜ: KATILIMCI ESER & ATÖLYE YORUMLARI ONAY MASASI */}
+          <div className="bg-[#FAF7F2] rounded-3xl p-6 sm:p-7 border-2 border-[#DE997C]/60 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E7DDCE] pb-5">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 mb-2">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Katılımcı Eser & Atölye Yorumları Kontrol Paneli</span>
+                  {posts.filter((p) => p.status === 'pending').length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] animate-pulse">
+                      {posts.filter((p) => p.status === 'pending').length} Yeni İnceleme
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-display text-xl sm:text-2xl font-bold text-[#4A3F3A]">
+                  Eser & Yorum Onay Masası (Dashboard Önü)
+                </h3>
+                <p className="text-xs sm:text-sm text-[#7E7067] mt-1 max-w-2xl leading-relaxed">
+                  Biletli katılımcıların atölye sonrası bilgisayarlarından yüklediği eser fotoğrafları, 1-5 yıldız puanları ve deneyim yorumları doğrudan buraya düşer. Onayladıklarınız tüm kullanıcılara ve ana sayfaya anında yansır.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('approvals')}
+                  className="px-4 py-2 bg-[#4A3F3A] hover:bg-[#382F2A] text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <span>Detaylı Masayı Aç ({posts.length})</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Pending approvals cards */}
+            {(() => {
+              const pendingList = posts.filter((p) => p.status === 'pending');
+
+              if (pendingList.length === 0) {
+                const publishedList = posts.filter((p) => p.status === 'published');
+
+                return (
+                  <div className="space-y-4">
+                    <div className="p-5 bg-white rounded-2xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-sm text-[#4A3F3A] block">
+                            Şu An Onay Bekleyen Paylaşım Bulunmuyor
+                          </span>
+                          <span className="text-[#7E7067]">
+                            Tüm katılımcı fotoğrafları ve atölye yorumları incelendi. Yeni bir eser gönderildiğinde canlı olarak bu masaya düşecektir.
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-emerald-700 font-semibold shrink-0">
+                        ✓ {publishedList.length} Eser Yayında
+                      </div>
+                    </div>
+
+                    {/* Quick switch for published crafts on Home Page */}
+                    {publishedList.length > 0 && (
+                      <div className="bg-white rounded-2xl border border-[#E7DDCE] p-4 space-y-3">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-[#4A3F3A]">
+                            Yayındaki Eserler & Ana Sayfa Gösterim Durumu:
+                          </span>
+                          <span className="text-[11px] text-[#7E7067]">
+                            Ana sayfada görünmesini istediklerinizi tek tıkla açıp kapatabilirsiniz.
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {publishedList.slice(0, 3).map((post) => (
+                            <div
+                              key={post.id}
+                              className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E7DDCE] flex items-center gap-3 justify-between"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {post.imageUrl && (
+                                  <img
+                                    src={post.imageUrl}
+                                    alt={post.title}
+                                    className="w-11 h-11 rounded-lg object-cover border border-[#E7DDCE] shrink-0"
+                                  />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold text-[#4A3F3A] truncate">
+                                    {post.title}
+                                  </p>
+                                  <div className="flex items-center gap-1 text-[10px] text-[#DE997C]">
+                                    <span>★ {post.rating || 5}/5</span>
+                                    <span>·</span>
+                                    <span className="truncate text-[#7E7067]">{post.authorName}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const res = await togglePostShowOnHome(post.id);
+                                  setActionNotice({
+                                    type: 'success',
+                                    message: res.showOnHome
+                                      ? `"${post.title}" ana sayfa vitrinine eklendi.`
+                                      : `"${post.title}" ana sayfa vitrininden kaldırıldı (toplulukta kalmaya devam eder).`,
+                                  });
+                                }}
+                                className={`px-2.5 py-1 text-[10px] font-semibold rounded-lg border transition-colors shrink-0 cursor-pointer ${
+                                  post.showOnHome
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : 'bg-white text-[#7E7067] border-[#E7DDCE] hover:bg-stone-50'
+                                }`}
+                              >
+                                {post.showOnHome ? '✓ Ana Sayfada' : '+ Ana Sayfaya Ekle'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50 border border-amber-200 px-4 py-2.5 rounded-xl font-medium">
+                    <span>
+                      🔔 İncelemenizi bekleyen <strong>{pendingList.length} adet yeni eser ve yorum</strong> var:
+                    </span>
+                    <span>Lütfen fotoğrafı ve atölye yorumunu kontrol edip onaylayın.</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {pendingList.map((post) => (
+                      <div
+                        key={post.id}
+                        className="bg-white rounded-2xl border-2 border-amber-300/80 p-5 shadow-xs space-y-4 flex flex-col justify-between"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                ⏳ ONAY BEKLİYOR
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#FAF7F2] text-[#4A3F3A] border border-[#E7DDCE]">
+                                {post.categoryLabel || 'Atölye'}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-[#7E7067]">
+                              Tarih: {post.createdAt}
+                            </span>
+                          </div>
+
+                          <div className="flex gap-4">
+                            {post.imageUrl && (
+                              <div className="relative w-28 h-28 rounded-xl overflow-hidden border border-[#E7DDCE] shrink-0 bg-[#FAF7F2]">
+                                <img
+                                  src={post.imageUrl}
+                                  alt={post.title}
+                                  className="w-full h-full object-cover"
+                                />
+                                <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 text-[9px] text-white rounded">
+                                  Fotoğraf
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <h4 className="font-display text-base font-bold text-[#4A3F3A] leading-snug">
+                                {post.title}
+                              </h4>
+                              {post.workshopTitle && (
+                                <p className="text-[11px] text-[#DE997C] font-semibold truncate">
+                                  Atölye: {post.workshopTitle}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-0.5">
+                                  {[1, 2, 3, 4, 5].map((s) => (
+                                    <Star
+                                      key={s}
+                                      className={`w-3.5 h-3.5 ${
+                                        s <= (post.rating || 5)
+                                          ? 'fill-amber-400 text-amber-500'
+                                          : 'text-stone-300'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                                <span className="text-xs font-bold text-[#4A3F3A]">
+                                  {post.rating || 5} / 5 Yıldız
+                                </span>
+                                <span className="text-[10px] text-[#7E7067]">
+                                  ({post.authorName})
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Review comment quote */}
+                          <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E7DDCE] text-xs text-[#4A3F3A] italic leading-relaxed">
+                            "{post.description}"
+                          </div>
+                        </div>
+
+                        {/* Approval Action Buttons */}
+                        <div className="pt-2 border-t border-[#E7DDCE] flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const res = await reviewPost(post.id, 'publish', undefined, true);
+                              setActionNotice({
+                                type: res.success ? 'success' : 'error',
+                                message: res.success
+                                  ? `"${post.title}" onaylandı ve hem vitrinde hem de ANA SAYFADA yayına alındı!`
+                                  : res.message,
+                              });
+                            }}
+                            className="flex-1 min-w-[150px] py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Onayla & Ana Sayfaya Gönder</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const res = await reviewPost(post.id, 'publish', undefined, false);
+                              setActionNotice({
+                                type: res.success ? 'success' : 'error',
+                                message: res.success
+                                  ? `"${post.title}" onaylandı ve Topluluk Vitrininde yayına alındı.`
+                                  : res.message,
+                              });
+                            }}
+                            className="py-2 px-3 bg-[#4A3F3A] hover:bg-[#382F2A] text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <span>Sadece Vitrinde Yayınla</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setRejectingPost(post)}
+                            className="py-2 px-3 bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            <span>Gerekçe ile Reddet</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Quick sessions overview */}
           <div className="bg-[#FAF7F2] rounded-3xl p-6 border border-[#E7DDCE] space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-display text-base font-semibold text-[#4A3F3A]">
-                Yaklaşan Seansların Durumu
-              </h3>
+              <div>
+                <h3 className="font-display text-base font-semibold text-[#4A3F3A]">
+                  Yaklaşan Seansların Durumu & Katılımcı Listeleri
+                </h3>
+                <p className="text-[11px] text-[#7E7067]">
+                  Kontenjan doluluk oranları, kapı giriş durumları ve biletli katılımcı detayları.
+                </p>
+              </div>
               <button
                 onClick={() => setIsSessionModalOpen(true)}
                 className="px-3 py-1.5 bg-[#F4B59A] text-xs font-semibold rounded-xl text-[#4A3F3A] hover:bg-[#DE997C] transition-colors cursor-pointer"
@@ -483,39 +869,164 @@ export const AdminView: React.FC = () => {
               </button>
             </div>
 
-            <div className="divide-y divide-[#E7DDCE]/60">
-              {sessions.slice(0, 5).map((session) => {
+            <div className="space-y-3">
+              {sessions.slice(0, 6).map((session) => {
                 const course = courses.find((c) => c.id === session.courseId);
                 const isFull = session.bookedCount >= session.capacity;
+                const sessionTickets = orders
+                  .filter((o) => o.sessionId === session.id && o.status === 'paid')
+                  .flatMap((o) => o.tickets);
+                const checkedInCount = sessionTickets.filter((t) => t.checkedIn).length;
+                const isExpanded = expandedSessionId === session.id;
 
                 return (
-                  <div key={session.id} className="py-3 flex items-center justify-between gap-4 text-xs">
-                    <div>
-                      <span className="font-semibold text-sm text-[#4A3F3A] block">
-                        {course?.title || 'Atölye'}
-                      </span>
-                      <span className="text-[#7E7067]">
-                        {formatDate(session.date)} · {session.startTime} - {session.endTime}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <span className="font-bold text-[#4A3F3A] block">
-                          {session.bookedCount} / {session.capacity} Dolu
-                        </span>
-                        <span className={`text-[10px] font-semibold ${isFull ? 'text-red-700' : 'text-[#8AA481]'}`}>
-                          {isFull ? 'Kontenjan Doldu' : `${session.capacity - session.bookedCount} Boş Yer`}
+                  <div
+                    key={session.id}
+                    className="p-4 bg-white rounded-2xl border border-[#E7DDCE] space-y-3 transition-all hover:shadow-2xs"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-[#4A3F3A]">
+                            {course?.title || 'Atölye'}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              isFull ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {isFull ? 'KONTENJAN DOLDU' : `${session.capacity - session.bookedCount} Boş Yer`}
+                          </span>
+                        </div>
+                        <span className="text-[#7E7067] text-[11px]">
+                          📅 {formatDate(session.date)} · ⏰ {session.startTime} - {session.endTime} · 👤 Eğitmen: {course?.instructor?.name || 'Selin Arslan'}
                         </span>
                       </div>
 
-                      <button
-                        onClick={() => setSelectedSessionForAttendees(session)}
-                        className="px-3 py-1.5 bg-white hover:bg-[#F3EADF] text-[#4A3F3A] rounded-lg border border-[#E7DDCE] transition-colors cursor-pointer"
-                      >
-                        Katılımcılar
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <span className="font-bold text-sm text-[#4A3F3A]">
+                              {session.bookedCount} / {session.capacity}
+                            </span>
+                            <span className="text-[11px] text-[#7E7067]">Dolu</span>
+                          </div>
+                          <span className="text-[10px] text-[#7E7067] block">
+                            {checkedInCount} Giriş / {sessionTickets.length - checkedInCount} Bekleniyor
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-xl border transition-colors cursor-pointer ${
+                              isExpanded
+                                ? 'bg-[#4A3F3A] text-white border-[#4A3F3A]'
+                                : 'bg-[#FAF7F2] text-[#4A3F3A] border-[#E7DDCE] hover:bg-[#F3EADF]'
+                            }`}
+                          >
+                            {isExpanded ? 'Gizle' : `Katılımcılar (${sessionTickets.length})`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSessionForAttendees(session)}
+                            className="px-3 py-1.5 bg-[#F3EADF] hover:bg-[#DE997C] hover:text-white text-[#4A3F3A] text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                          >
+                            Yönet & CSV
+                          </button>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Katılımcı Önizleme Rozetleri */}
+                    {sessionTickets.length > 0 ? (
+                      <div className="pt-2 border-t border-[#E7DDCE]/60">
+                        <div className="flex items-center justify-between text-[11px] text-[#7E7067] mb-1.5">
+                          <span className="font-semibold text-[#4A3F3A]">
+                            👥 Kayıtlı Katılımcılar ({sessionTickets.length} Kişi):
+                          </span>
+                          <span className="text-[10px]">
+                            {checkedInCount} kişi kapıdan giriş yaptı
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {sessionTickets.map((t) => (
+                            <span
+                              key={t.id}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
+                                t.checkedIn
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-[#FAF7F2] text-[#4A3F3A] border-[#E7DDCE]'
+                              }`}
+                            >
+                              <span className="font-bold text-[#DE997C]">#{t.seatNumber}</span>
+                              <span>{t.attendeeName}</span>
+                              {t.checkedIn && (
+                                <span className="text-[9px] text-emerald-700 font-semibold">✓ Giriş</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pt-2 border-t border-[#E7DDCE]/60 text-[11px] text-[#7E7067] italic">
+                        Bu seans için henüz rezervasyon bulunmuyor.
+                      </div>
+                    )}
+
+                    {/* Açılır / Genişleyen Detaylı Katılımcı Tablosu */}
+                    {isExpanded && sessionTickets.length > 0 && (
+                      <div className="pt-3 border-t border-[#E7DDCE] space-y-2">
+                        <div className="bg-[#FAF7F2] rounded-xl p-3 border border-[#E7DDCE]">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            {sessionTickets.map((t) => (
+                              <div
+                                key={t.id}
+                                className="p-2.5 bg-white rounded-lg border border-[#E7DDCE] flex items-center justify-between gap-2"
+                              >
+                                <div className="space-y-0.5">
+                                  <div className="font-semibold text-[#4A3F3A] flex items-center gap-1">
+                                    <span className="px-1.5 py-0.2 bg-[#DE997C]/20 text-[#DE997C] rounded text-[10px] font-bold">
+                                      #{t.seatNumber}
+                                    </span>
+                                    <span>{t.attendeeName}</span>
+                                  </div>
+                                  <div className="text-[10px] text-[#7E7067]">
+                                    {t.attendeeEmail} · {t.attendeePhone}
+                                  </div>
+                                  <div className="text-[10px] font-mono text-[#DE997C]">
+                                    {t.ticketCode}
+                                  </div>
+                                </div>
+
+                                <div className="text-right shrink-0">
+                                  {t.checkedIn ? (
+                                    <span className="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200 block">
+                                      ✓ Giriş Yapıldı
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const res = checkInTicket(t.ticketCode);
+                                        setActionNotice({
+                                          type: res.success ? 'success' : 'error',
+                                          message: res.message,
+                                        });
+                                      }}
+                                      className="px-2 py-1 rounded-md bg-[#4A3F3A] hover:bg-[#382F2A] text-white text-[10px] font-semibold cursor-pointer transition-colors"
+                                    >
+                                      Giriş Al
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -727,7 +1238,7 @@ export const AdminView: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setIsCourseModalOpen(true)}
+                onClick={openNewCourseModal}
                 className="px-4 py-2 bg-[#F4B59A] hover:bg-[#DE997C] text-xs font-semibold rounded-xl text-[#4A3F3A] transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
               >
                 <Plus className="w-4 h-4" />
@@ -736,27 +1247,18 @@ export const AdminView: React.FC = () => {
             </div>
           </div>
 
-          {/* Cloud Info Bar */}
+          {/* Courses Management Info Bar */}
           <div className="bg-[#FAF7F2] p-4 rounded-2xl border border-[#E7DDCE] flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
             <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-[#4A3F3A]">Firestore Koleksiyonları:</span>
-                <code className="bg-[#E7DDCE]/60 text-[#4A3F3A] px-2 py-0.5 rounded font-mono text-[11px]">
-                  /courses/{'{courseId}'}
-                </code>
-                <span className="text-[#7E7067]">&</span>
-                <code className="bg-[#E7DDCE]/60 text-[#4A3F3A] px-2 py-0.5 rounded font-mono text-[11px]">
-                  /sessions/{'{sessionId}'}
-                </code>
-              </div>
+              <span className="font-semibold text-[#4A3F3A]">Atölye & Kurs Yönetimi (Tam CRUD)</span>
               <p className="text-[#7E7067]">
-                Yeni bir atölye veya seans eklendiğinde otomatik olarak Firestore'a yazılır ve diğer cihazlara anlık iletilir.
+                Atölyeleri listeleyebilir, yeni atölye ekleyebilir, mevcut bir atölyeyi anında düzenleyebilir veya silebilirsiniz. Değişiklikler Firestore veritabanına anlık işlenir.
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                Firestore Canlı Eşitli
+                Firestore CRUD Aktif
               </span>
             </div>
           </div>
@@ -765,7 +1267,7 @@ export const AdminView: React.FC = () => {
             {courses.map((course) => (
               <div
                 key={course.id}
-                className="bg-[#FAF7F2] rounded-3xl p-5 border border-[#E7DDCE] flex gap-4 items-start justify-between"
+                className="bg-[#FAF7F2] rounded-3xl p-5 border border-[#E7DDCE] flex gap-4 items-start justify-between hover:border-[#DE997C]/60 transition-colors"
               >
                 <img
                   src={course.imageUrl}
@@ -787,17 +1289,27 @@ export const AdminView: React.FC = () => {
                   </span>
                 </div>
 
-                <button
-                  onClick={() => {
-                    if (window.confirm(`${course.title} atölyesini silmek istediğinize emin misiniz?`)) {
-                      deleteCourse(course.id);
-                    }
-                  }}
-                  className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                  title="Sil"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => openEditCourseModal(course)}
+                    className="p-2 text-[#4A3F3A] hover:text-[#DE997C] hover:bg-white rounded-xl border border-transparent hover:border-[#E7DDCE] transition-all cursor-pointer"
+                    title="Atölyeyi Düzenle (Fiyat, Süre, Eğitmen vs.)"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`${course.title} atölyesini silmek istediğinize emin misiniz?`)) {
+                        deleteCourse(course.id);
+                        setActionNotice({ type: 'success', message: `"${course.title}" atölyesi silindi.` });
+                      }
+                    }}
+                    className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                    title="Atölyeyi Sil"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -915,17 +1427,6 @@ export const AdminView: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <a
-                href="https://console.firebase.google.com/project/industrial-result-1w2pc/firestore/databases/ai-studio-nichecraftstudio-14b047c3-b492-4714-bd13-5435005f46b9/data"
-                target="_blank"
-                rel="noreferrer"
-                className="px-3.5 py-2 bg-[#F3EADF] hover:bg-[#E7DDCE] text-xs font-semibold text-[#4A3F3A] rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                title="Firebase Konsolunda Koleksiyonları Aç"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-[#DE997C]" />
-                <span>Firebase Konsolunda Aç ↗</span>
-              </a>
-
               <button
                 onClick={async () => {
                   setIsSyncingCloud(true);
@@ -934,7 +1435,7 @@ export const AdminView: React.FC = () => {
                   if (res.success) {
                     setActionNotice({
                       type: 'success',
-                      message: `${res.count} kayıtlı kullanıcı Firestore bulut veritabanı ile başarıyla senkronize edildi.`,
+                      message: `${res.count} kayıtlı kullanıcı veritabanı ile başarıyla senkronize edildi.`,
                     });
                   } else {
                     setActionNotice({
@@ -947,30 +1448,8 @@ export const AdminView: React.FC = () => {
                 className="px-3.5 py-2 bg-[#4A3F3A] hover:bg-[#382F2B] text-xs font-semibold text-white rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
-                <span>{isSyncingCloud ? 'Eşitleniyor...' : 'Buluta Senkronize Et'}</span>
+                <span>{isSyncingCloud ? 'Eşitleniyor...' : 'Verileri Senkronize Et'}</span>
               </button>
-            </div>
-          </div>
-
-          {/* Cloud Status Info Card */}
-          <div className="bg-[#FAF7F2] p-4 rounded-2xl border border-[#E7DDCE] flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-[#4A3F3A]">Aktif Firestore Veritabanı ID:</span>
-                <code className="bg-[#E7DDCE]/60 text-[#4A3F3A] px-2 py-0.5 rounded font-mono text-[11px]">
-                  ai-studio-nichecraftstudio-14b047c3-b492-4714-bd13-5435005f46b9
-                </code>
-              </div>
-              <p className="text-[#7E7067]">
-                Koleksiyon Yolu: <code className="font-mono text-[#DE997C]">/users/{'{userId}'}</code> · Canlı <code className="font-mono text-[#4A3F3A]">onSnapshot</code> dinleyicisi bağlı.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                Firestore Canlı Bağlı
-              </span>
             </div>
           </div>
 
@@ -1419,72 +1898,512 @@ export const AdminView: React.FC = () => {
         </div>
       )}
 
-      {/* Katılımcı Listesi Modalı (CSV İndirmeli) */}
-      {selectedSessionForAttendees && (
-        <div className="fixed inset-0 z-50 bg-[#4A3F3A]/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full border border-[#E7DDCE] shadow-2xl p-6 sm:p-8 space-y-5 relative">
-            <button
-              onClick={() => setSelectedSessionForAttendees(null)}
-              className="absolute top-4 right-4 p-1.5 text-[#7E7067] hover:text-[#4A3F3A] rounded-lg transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#DE997C]">
-                Katılımcı Listesi
-              </span>
-              <h3 className="font-display text-xl font-semibold text-[#4A3F3A]">
-                {courses.find((c) => c.id === selectedSessionForAttendees.courseId)?.title}
-              </h3>
-              <p className="text-xs text-[#7E7067]">
-                {formatDate(selectedSessionForAttendees.date)} · {selectedSessionForAttendees.startTime} - {selectedSessionForAttendees.endTime}
+      {/* TAB 8: ESER & YORUM ONAY MASASI (ÖDEV 3 - SEÇENEK B) */}
+      {activeTab === 'approvals' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#DE997C]">
+                  Yönetici İnceleme & Onay Masası
+                </span>
+              </div>
+              <h2 className="font-display text-xl sm:text-2xl font-semibold text-[#4A3F3A]">
+                Eser Fotoğrafları & Atölye Yorumları Onay Kuyruğu
+              </h2>
+              <p className="text-xs text-[#7E7067] mt-1">
+                Biletli katılımcıların atölye sonrası paylaştığı fotoğrafları, 1-5 yıldız puanlarını ve yorumlarını inceleyin. Tek tıkla onaylayarak Topluluk Vitrininde ve Ana Sayfada yayınlayın veya zorunlu gerekçe ile düzeltme isteyin.
               </p>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            {/* Quick Status Filter Tabs */}
+            <div className="flex items-center gap-1.5 bg-[#F3EADF] p-1.5 rounded-xl text-xs">
               <button
-                onClick={() => exportAttendeesCsv(selectedSessionForAttendees.id)}
-                className="px-4 py-2 bg-[#A8BFA0] hover:bg-[#8AA481] text-[#4A3F3A] text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setApprovalStatusFilter('pending')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  approvalStatusFilter === 'pending'
+                    ? 'bg-[#4A3F3A] text-white shadow-xs'
+                    : 'text-[#7E7067] hover:text-[#4A3F3A]'
+                }`}
               >
-                <Download className="w-4 h-4" />
-                <span>CSV Olarak İndir</span>
+                Onay Bekleyenler ({posts.filter((p) => p.status === 'pending').length})
+              </button>
+              <button
+                onClick={() => setApprovalStatusFilter('published')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  approvalStatusFilter === 'published'
+                    ? 'bg-[#4A3F3A] text-white shadow-xs'
+                    : 'text-[#7E7067] hover:text-[#4A3F3A]'
+                }`}
+              >
+                Yayındakiler ({posts.filter((p) => p.status === 'published').length})
+              </button>
+              <button
+                onClick={() => setApprovalStatusFilter('rejected')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  approvalStatusFilter === 'rejected'
+                    ? 'bg-[#4A3F3A] text-white shadow-xs'
+                    : 'text-[#7E7067] hover:text-[#4A3F3A]'
+                }`}
+              >
+                Reddedilenler ({posts.filter((p) => p.status === 'rejected').length})
+              </button>
+              <button
+                onClick={() => setApprovalStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  approvalStatusFilter === 'all'
+                    ? 'bg-[#4A3F3A] text-white shadow-xs'
+                    : 'text-[#7E7067] hover:text-[#4A3F3A]'
+                }`}
+              >
+                Tümü ({posts.length})
+              </button>
+            </div>
+          </div>
+
+          {/* Posts List */}
+          {(() => {
+            const list = posts.filter((p) => {
+              if (approvalStatusFilter === 'all') return true;
+              return p.status === approvalStatusFilter;
+            });
+
+            if (list.length === 0) {
+              return (
+                <div className="p-12 text-center bg-white rounded-2xl border border-[#E7DDCE] text-xs text-[#7E7067] space-y-2">
+                  <div className="w-10 h-10 rounded-full bg-[#FAF7F2] text-[#7E7067] flex items-center justify-center mx-auto">
+                    <Sparkles className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div className="font-semibold text-sm text-[#4A3F3A]">Kuyrukta Eser Bulunmuyor</div>
+                  <p className="max-w-md mx-auto">
+                    {approvalStatusFilter === 'pending'
+                      ? 'Harika! Onay bekleyen hiçbir eser kalmadı. Katılımcılar yeni eser gönderdikçe anlık olarak burada listelenecektir.'
+                      : 'Bu filtreye uygun eser kaydı bulunmuyor.'}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                {list.map((post) => (
+                  <div
+                    key={post.id}
+                    className="bg-white rounded-2xl border border-[#E7DDCE] p-6 shadow-xs space-y-4 hover:border-[#DE997C]/50 transition-all"
+                  >
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                          {post.status === 'pending' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              Onay Bekliyor
+                            </span>
+                          )}
+                          {post.status === 'published' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                              Yayında (Topluluk Vitrini)
+                            </span>
+                          )}
+                          {post.status === 'published' && post.showOnHome && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+                              ★ Ana Sayfada Öne Çıkıyor
+                            </span>
+                          )}
+                          {post.status === 'rejected' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-800 border border-red-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
+                              Reddedildi / Düzeltme İsteniyor
+                            </span>
+                          )}
+                          {post.status === 'draft' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#F3EADF] text-[#7E7067]">
+                              Taslak (Kullanıcı Paneli)
+                            </span>
+                          )}
+                          <span className="text-xs text-[#7E7067]">&bull;</span>
+                          <span className="text-xs font-semibold text-[#4A3F3A]">{post.categoryLabel}</span>
+                          <span className="text-xs text-[#7E7067]">&bull;</span>
+                          <span className="text-xs text-[#7E7067]">📅 {post.createdAt}</span>
+                        </div>
+
+                        <div className="flex gap-4 items-start pt-1">
+                          {post.imageUrl && (
+                            <img
+                              src={post.imageUrl}
+                              alt={post.title}
+                              className="w-20 h-20 rounded-2xl object-cover bg-[#FAF7F2] border border-[#E7DDCE] shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          )}
+                          <div className="space-y-1 min-w-0">
+                            <h3 className="font-display text-lg font-semibold text-[#4A3F3A]">
+                              {post.title}
+                            </h3>
+                            <p className="text-xs text-[#7E7067]">
+                              Katılımcı: <strong className="text-[#4A3F3A]">{post.authorName}</strong> (ID: {post.authorId})
+                              {post.workshopTitle && <> &bull; Atölye: <strong className="text-[#4A3F3A]">{post.workshopTitle}</strong></>}
+                            </p>
+                            {post.rating && (
+                              <div className="flex items-center gap-1 pt-0.5">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <Star
+                                    key={s}
+                                    className={`w-3.5 h-3.5 ${
+                                      s <= post.rating!
+                                        ? 'fill-amber-400 text-amber-500'
+                                        : 'text-stone-300'
+                                    }`}
+                                  />
+                                ))}
+                                <span className="text-[11px] font-bold text-[#DE997C] ml-1">
+                                  {post.rating}/5 Katılımcı Puanı
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {post.status === 'pending' && (
+                          <>
+                            <button
+                              onClick={async () => {
+                                const res = await reviewPost(post.id, 'publish', undefined, true);
+                                setActionNotice({
+                                  type: res.success ? 'success' : 'error',
+                                  message: res.message,
+                                });
+                              }}
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Onayla & Vitrinde Yayınla</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setRejectingPost(post);
+                                setRejectionReasonInput('');
+                              }}
+                              className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Reddet / Gerekçe İlet</span>
+                            </button>
+                          </>
+                        )}
+
+                        {post.status === 'published' && (
+                          <>
+                            <button
+                              onClick={async () => {
+                                const res = await togglePostShowOnHome(post.id);
+                                if (res.success) {
+                                  setActionNotice({
+                                    type: 'success',
+                                    message: res.showOnHome
+                                      ? 'Eser ana sayfada öne çıkarılanlar vitrinine eklendi.'
+                                      : 'Eser ana sayfadan kaldırıldı.',
+                                  });
+                                }
+                              }}
+                              className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${
+                                post.showOnHome
+                                  ? 'bg-amber-100 border-amber-300 text-amber-900 hover:bg-amber-200'
+                                  : 'bg-white border-[#E7DDCE] text-[#4A3F3A] hover:bg-[#FAF7F2]'
+                              }`}
+                            >
+                              {post.showOnHome ? '★ Ana Sayfada (Kaldır)' : '☆ Ana Sayfaya Ekle'}
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const res = await reviewPost(post.id, 'reject', 'Yönetici tarafından revizyon amacıyla yayından kaldırıldı.');
+                                setActionNotice({
+                                  type: 'success',
+                                  message: 'Eser yayından kaldırıldı ve düzeltme durumuna alındı.',
+                                });
+                              }}
+                              className="px-3 py-1.5 text-xs text-[#7E7067] hover:text-red-700 border border-[#E7DDCE] hover:border-red-200 rounded-xl transition-colors cursor-pointer"
+                            >
+                              Yayından Kaldır
+                            </button>
+                          </>
+                        )}
+
+                        {post.status === 'rejected' && (
+                          <button
+                            onClick={async () => {
+                              const res = await reviewPost(post.id, 'publish');
+                              setActionNotice({
+                                type: 'success',
+                                message: 'Eser onaylanarak tekrar yayına alındı.',
+                              });
+                            }}
+                            className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                          >
+                            Tekrar Onayla & Yayınla
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Existing Rejection Notice */}
+                    {post.rejectionReason && (
+                      <div className="bg-red-50 border border-red-200 p-3.5 rounded-xl text-xs space-y-1">
+                        <span className="font-semibold text-red-800 block">Kayıtlı Reddetme Sebebi:</span>
+                        <p className="text-red-700 leading-relaxed font-sans">{post.rejectionReason}</p>
+                        {post.reviewedBy && (
+                          <span className="text-[10px] text-red-600 block pt-0.5">
+                            İnceleyen: {post.reviewedBy} &bull; {post.reviewedAt}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Description */}
+                    {post.description && (
+                      <div className="p-3 bg-[#FAF7F2] rounded-xl text-xs text-[#4A3F3A] leading-relaxed italic border border-[#E7DDCE]/60">
+                        "{post.description}"
+                      </div>
+                    )}
+
+                    {/* Materials & Steps grid if present */}
+                    {((post.materials && post.materials.length > 0) || (post.steps && post.steps.length > 0)) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1">
+                        {post.materials && post.materials.length > 0 && (
+                          <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E7DDCE]/60 space-y-1.5">
+                            <span className="font-semibold uppercase tracking-wider text-[11px] text-[#7E7067] block">
+                              Gerekli Malzemeler ({post.materials.length})
+                            </span>
+                            <ul className="list-disc list-inside text-[#4A3F3A] space-y-1">
+                              {post.materials.map((m, i) => (
+                                <li key={i}>{m}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {post.steps && post.steps.length > 0 && (
+                          <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#E7DDCE]/60 space-y-1.5">
+                            <span className="font-semibold uppercase tracking-wider text-[11px] text-[#7E7067] block">
+                              Yapılış Adımları ({post.steps.length} Aşamalı)
+                            </span>
+                            <ol className="list-decimal list-inside text-[#4A3F3A] space-y-1">
+                              {post.steps.map((s, i) => (
+                                <li key={i}>{s}</li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Reddetme Gerekçesi Modalı */}
+      {rejectingPost && (
+        <div className="fixed inset-0 z-50 bg-[#4A3F3A]/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full border border-[#E7DDCE] shadow-2xl p-6 sm:p-8 space-y-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-red-600">
+                  Eser Reddetme / Düzeltme Talebi
+                </span>
+                <h3 className="font-display text-xl font-semibold text-[#4A3F3A] mt-0.5">
+                  "{rejectingPost.title}"
+                </h3>
+              </div>
+              <button
+                onClick={() => setRejectingPost(null)}
+                className="p-1.5 text-[#7E7067] hover:text-[#4A3F3A] rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Attendees list */}
-            <div className="max-h-72 overflow-y-auto border border-[#E7DDCE] rounded-2xl divide-y divide-[#E7DDCE]/60">
-              {orders
-                .filter((o) => o.sessionId === selectedSessionForAttendees.id && o.status === 'paid')
-                .flatMap((o) => o.tickets).length === 0 ? (
-                <div className="p-8 text-center text-xs text-[#7E7067]">
-                  Bu seansa henüz kayıtlı biletli katılımcı bulunmuyor.
-                </div>
-              ) : (
-                orders
-                  .filter((o) => o.sessionId === selectedSessionForAttendees.id && o.status === 'paid')
-                  .flatMap((o) => o.tickets)
-                  .map((t) => (
-                    <div key={t.id} className="p-3.5 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="font-semibold text-[#4A3F3A] block">
-                          {t.attendeeName} (Koltuk #{t.seatNumber})
-                        </span>
-                        <span className="text-[#7E7067]">{t.attendeeEmail} · {t.attendeePhone}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-mono font-bold text-[#4A3F3A] block">{t.ticketCode}</span>
-                        <span className={`text-[10px] font-semibold ${t.checkedIn ? 'text-emerald-700' : 'text-[#7E7067]'}`}>
-                          {t.checkedIn ? '✓ Giriş Yaptı' : 'Bekleniyor'}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-              )}
+            <p className="text-xs text-[#7E7067] leading-relaxed">
+              Katılımcıya eserin neden onaylanmadığını ve nelerin düzeltilmesi gerektiğini açıklayın.
+              Örnek: <em>"Yapılış adımları en az 3 detaylı aşamayı içermelidir."</em>
+            </p>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#4A3F3A] uppercase mb-1.5">
+                Red Gerekçesi / Düzeltme Notu <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Örn: Yapılış adımları en az 3 detaylı aşamayı ve kullanılan divit ucu ölçüsünü içermelidir. Lütfen düzenleyip tekrar gönderiniz."
+                value={rejectionReasonInput}
+                onChange={(e) => setRejectionReasonInput(e.target.value)}
+                className="w-full p-3 text-xs rounded-xl bg-[#FAF7F2] border border-[#E7DDCE] text-[#4A3F3A] focus:outline-none focus:ring-2 focus:ring-[#DE997C]"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setRejectingPost(null)}
+                className="flex-1 py-2.5 border border-[#E7DDCE] text-[#7E7067] text-xs font-semibold rounded-xl hover:bg-[#FAF7F2] transition-colors cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!rejectionReasonInput.trim()) {
+                    alert('Lütfen bir reddetme gerekçesi giriniz.');
+                    return;
+                  }
+                  const res = await reviewPost(rejectingPost.id, 'reject', rejectionReasonInput);
+                  setRejectingPost(null);
+                  setActionNotice({
+                    type: res.success ? 'success' : 'error',
+                    message: res.message,
+                  });
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer shadow-xs"
+              >
+                Reddi Onayla ve İlet
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Katılımcı Listesi Modalı (CSV İndirmeli & Canlı Check-in) */}
+      {selectedSessionForAttendees && (() => {
+        const modalCourse = courses.find((c) => c.id === selectedSessionForAttendees.courseId);
+        const modalTickets = orders
+          .filter((o) => o.sessionId === selectedSessionForAttendees.id && o.status === 'paid')
+          .flatMap((o) => o.tickets);
+        const modalCheckedInCount = modalTickets.filter((t) => t.checkedIn).length;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-[#4A3F3A]/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-2xl w-full border border-[#E7DDCE] shadow-2xl p-6 sm:p-8 space-y-5 relative">
+              <button
+                onClick={() => setSelectedSessionForAttendees(null)}
+                className="absolute top-4 right-4 p-1.5 text-[#7E7067] hover:text-[#4A3F3A] rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#DE997C]">
+                  Resmi Katılımcı & Kapı Kontrol Listesi
+                </span>
+                <h3 className="font-display text-xl font-semibold text-[#4A3F3A]">
+                  {modalCourse?.title || 'Atölye Seansı'}
+                </h3>
+                <p className="text-xs text-[#7E7067]">
+                  📅 {formatDate(selectedSessionForAttendees.date)} · ⏰ {selectedSessionForAttendees.startTime} - {selectedSessionForAttendees.endTime} · 👤 Eğitmen: {modalCourse?.instructor?.name || 'Selin Arslan'}
+                </p>
+              </div>
+
+              {/* KPI Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                <div className="p-2.5 bg-[#FAF7F2] rounded-xl border border-[#E7DDCE] text-center">
+                  <span className="text-[10px] text-[#7E7067] uppercase font-semibold block">Kontenjan</span>
+                  <span className="text-base font-bold text-[#4A3F3A]">{selectedSessionForAttendees.capacity} Kişi</span>
+                </div>
+                <div className="p-2.5 bg-[#FAF7F2] rounded-xl border border-[#E7DDCE] text-center">
+                  <span className="text-[10px] text-[#7E7067] uppercase font-semibold block">Kayıtlı Bilet</span>
+                  <span className="text-base font-bold text-[#DE997C]">{modalTickets.length} Bilet</span>
+                </div>
+                <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                  <span className="text-[10px] text-emerald-700 uppercase font-semibold block">Giriş Yapan</span>
+                  <span className="text-base font-bold text-emerald-800">{modalCheckedInCount} Kişi</span>
+                </div>
+                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-center">
+                  <span className="text-[10px] text-amber-700 uppercase font-semibold block">Beklenen</span>
+                  <span className="text-base font-bold text-amber-800">{modalTickets.length - modalCheckedInCount} Kişi</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-[#7E7067]">
+                  Toplam <strong>{modalTickets.length}</strong> biletli katılımcı listeleniyor:
+                </span>
+                <button
+                  onClick={() => exportAttendeesCsv(selectedSessionForAttendees.id)}
+                  className="px-3.5 py-1.5 bg-[#A8BFA0] hover:bg-[#8AA481] text-[#4A3F3A] text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>CSV Olarak İndir</span>
+                </button>
+              </div>
+
+              {/* Attendees list */}
+              <div className="max-h-80 overflow-y-auto border border-[#E7DDCE] rounded-2xl divide-y divide-[#E7DDCE]/60">
+                {modalTickets.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-[#7E7067]">
+                    Bu seansa henüz kayıtlı biletli katılımcı bulunmuyor.
+                  </div>
+                ) : (
+                  modalTickets.map((t) => (
+                    <div key={t.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-[#FAF7F2]/50 transition-colors">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 bg-[#DE997C]/20 text-[#DE997C] font-bold rounded-md text-[10px]">
+                            Koltuk #{t.seatNumber}
+                          </span>
+                          <span className="font-semibold text-sm text-[#4A3F3A]">
+                            {t.attendeeName}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#7E7067]">
+                          ✉️ {t.attendeeEmail} · 📞 {t.attendeePhone}
+                        </div>
+                        <div className="text-[10px] font-mono text-[#7E7067]">
+                          Bilet: <strong>{t.ticketCode}</strong>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 sm:self-center self-end">
+                        {t.checkedIn ? (
+                          <div className="text-right">
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-[11px] font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Giriş Yaptı</span>
+                            </span>
+                            {t.checkedInAt && (
+                              <span className="text-[10px] text-[#7E7067] block mt-0.5">Saat: {t.checkedInAt}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const res = checkInTicket(t.ticketCode);
+                              setActionNotice({
+                                type: res.success ? 'success' : 'error',
+                                message: res.message,
+                              });
+                            }}
+                            className="px-3 py-1.5 bg-[#4A3F3A] hover:bg-[#382F2A] text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                          >
+                            Kapıda Giriş Al
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Yeni Seans Modalı */}
       {isSessionModalOpen && (
@@ -1589,22 +2508,25 @@ export const AdminView: React.FC = () => {
         </div>
       )}
 
-      {/* Yeni Atölye Kursu Modalı */}
+      {/* Yeni / Düzenle Atölye Kursu Modalı */}
       {isCourseModalOpen && (
         <div className="fixed inset-0 z-50 bg-[#4A3F3A]/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-lg w-full border border-[#E7DDCE] shadow-2xl p-6 space-y-4 relative my-8">
             <button
-              onClick={() => setIsCourseModalOpen(false)}
+              onClick={() => {
+                setIsCourseModalOpen(false);
+                setEditingCourse(null);
+              }}
               className="absolute top-4 right-4 p-1.5 text-[#7E7067] hover:text-[#4A3F3A] rounded-lg transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             <h3 className="font-display text-lg font-semibold text-[#4A3F3A]">
-              Yeni Atölye Tanımla
+              {editingCourse ? 'Atölyeyi Düzenle' : 'Yeni Atölye Tanımla'}
             </h3>
 
-            <form onSubmit={handleCreateCourse} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveCourse} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-semibold text-[#4A3F3A] mb-1">Atölye Başlığı</label>
                 <input
@@ -1719,7 +2641,7 @@ export const AdminView: React.FC = () => {
                   type="submit"
                   className="w-full py-2.5 bg-[#F4B59A] hover:bg-[#DE997C] text-[#4A3F3A] font-semibold rounded-xl transition-colors cursor-pointer"
                 >
-                  Atölyeyi Ekle
+                  {editingCourse ? 'Değişiklikleri Güncelle' : 'Atölyeyi Ekle'}
                 </button>
               </div>
             </form>

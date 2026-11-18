@@ -76,8 +76,8 @@ export const Header: React.FC = () => {
             Niche Craft Studio
           </button>
 
-          {/* Zone 2: 4-5 clean single-line text navigation links */}
-          <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-[#7E7067]">
+          {/* Zone 2: clean navigation links */}
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#7E7067]">
             <button
               onClick={() => handleNav({ view: 'home' })}
               className={`hover:text-[#4A3F3A] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
@@ -95,12 +95,20 @@ export const Header: React.FC = () => {
               Atölyeler & Seanslar
             </button>
             <button
+              onClick={() => handleNav({ view: 'community' })}
+              className={`hover:text-[#4A3F3A] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                currentView.view === 'community' ? 'text-[#4A3F3A] font-semibold' : ''
+              }`}
+            >
+              Topluluk & Keşfet
+            </button>
+            <button
               onClick={() => handleNav({ view: 'about' })}
               className={`hover:text-[#4A3F3A] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 currentView.view === 'about' ? 'text-[#4A3F3A] font-semibold' : ''
               }`}
             >
-              Stüdyo & Tunalı Adres
+              Stüdyo & Tunalı
             </button>
             <button
               onClick={() => handleNav({ view: 'account' })}
@@ -148,6 +156,13 @@ export const Header: React.FC = () => {
                     >
                       <Ticket className="w-3.5 h-3.5 text-[#DE997C]" />
                       <span>Biletlerim & Profil</span>
+                    </button>
+                    <button
+                      onClick={() => handleNav({ view: 'my-crafts' })}
+                      className="w-full text-left px-3.5 py-2 hover:bg-[#FAF7F2] text-[#4A3F3A] flex items-center gap-2 cursor-pointer"
+                    >
+                      <span className="text-sm">🎨</span>
+                      <span>Atölye Günlüğüm & Eserlerim</span>
                     </button>
                     <button
                       onClick={() => {
@@ -212,6 +227,20 @@ export const Header: React.FC = () => {
             >
               Atölyeler & Seanslar
             </button>
+            <button
+              onClick={() => handleNav({ view: 'community' })}
+              className="block w-full text-left py-2 text-sm font-medium text-[#4A3F3A]"
+            >
+              Topluluk & Keşfet
+            </button>
+            {currentUser && (
+              <button
+                onClick={() => handleNav({ view: 'my-crafts' })}
+                className="block w-full text-left py-2 text-sm font-medium text-[#4A3F3A]"
+              >
+                Atölye Günlüğüm & Eserlerim
+              </button>
+            )}
             <button
               onClick={() => handleNav({ view: 'about' })}
               className="block w-full text-left py-2 text-sm font-medium text-[#4A3F3A]"
